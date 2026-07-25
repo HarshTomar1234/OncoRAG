@@ -1,0 +1,21 @@
+# Planning docs — internal only, never pushed
+docs/
+notes/
+
+# Secrets
+.env
+.env.*
+!.env.example
+!environment_template.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS/editor
+.DS_Store
+.vscode/
