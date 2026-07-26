@@ -1,4 +1,4 @@
-from oncopilot.retrieval.client import weaviate_client
+from oncorag.retrieval.client import weaviate_client
 
 
 def main() -> None:

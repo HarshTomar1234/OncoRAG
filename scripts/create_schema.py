@@ -1,5 +1,5 @@
-from oncopilot.retrieval.client import weaviate_client
-from oncopilot.retrieval.schema import create_collections
+from oncorag.retrieval.client import weaviate_client
+from oncorag.retrieval.schema import create_collections
 
 
 def main() -> None:

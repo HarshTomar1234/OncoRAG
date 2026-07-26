@@ -1,11 +1,18 @@
 """CIViC GraphQL client. Public API, no auth required for reads.
 
 https://civicdb.org/api/graphql
+
+Query shape was worked out via schema introspection, not assumed:
+`Gene` is reached through `variants -> feature -> featureInstance` (a union,
+requires an inline fragment), and the NCBI id field is `entrezId` (not
+`ncbiId`/`ncbiGeneId`, which don't exist on this schema).
 """
 
 from typing import Any, Iterator
 
 import httpx
+
+from oncorag.ingestion.http_utils import with_retries
 
 CIVIC_GRAPHQL_URL = "https://civicdb.org/api/graphql"
 
@@ -21,10 +28,20 @@ query EvidenceItems($diseaseName: String!, $after: String) {
       evidenceLevel
       evidenceDirection
       significance
-      molecularProfile { name }
       disease { name }
       therapies { name }
-      source { citation sourceUrl }
+      source { citation citationId sourceUrl }
+      molecularProfile {
+        name
+        variants {
+          name
+          feature {
+            name
+            description
+            featureInstance { ... on Gene { entrezId } }
+          }
+        }
+      }
     }
   }
 }
@@ -32,13 +49,16 @@ query EvidenceItems($diseaseName: String!, $after: String) {
 
 
 def _post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
-    response = httpx.post(
-        CIVIC_GRAPHQL_URL,
-        json={"query": query, "variables": variables},
-        timeout=30.0,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    def do_request() -> dict[str, Any]:
+        response = httpx.post(
+            CIVIC_GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    payload = with_retries(do_request)
     if "errors" in payload:
         raise RuntimeError(f"CIViC GraphQL error: {payload['errors']}")
     return payload["data"]
