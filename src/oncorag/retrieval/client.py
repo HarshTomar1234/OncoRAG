@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import weaviate
 from weaviate.classes.init import Auth
 
-from oncopilot.config.settings import settings
+from oncorag.config.settings import settings
 
 
 @contextmanager

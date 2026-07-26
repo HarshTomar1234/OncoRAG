@@ -1,5 +1,5 @@
 [project]
-name = "oncopilot"
+name = "oncorag"
 version = "0.1.0"
 description = "Production RAG + agentic oncology knowledge system built on Weaviate"
 requires-python = ">=3.11"
