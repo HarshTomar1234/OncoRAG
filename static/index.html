@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OncoRAG</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d10;
+    --panel: #14171b;
+    --border: #262b31;
+    --text: #e6e9ec;
+    --muted: #8a919b;
+    --accent: #4fb2a8;
+    --accent-dim: #2c4b47;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { margin-bottom: 24px; }
+  header h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  header p { color: var(--muted); margin: 0; font-size: 0.9rem; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  input[type=password], textarea {
+    width: 100%;
+    background: #0e1013;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea { min-height: 70px; }
+
+  .row { display: flex; gap: 10px; align-items: flex-end; margin-top: 10px; }
+  .row > div { flex: 1; }
+  button {
+    background: var(--accent);
+    color: #06201d;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95rem;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: transparent;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+
+  .answer { white-space: pre-wrap; font-size: 0.98rem; }
+
+  details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+
+  .trace-item, .citation-item {
+    border-left: 2px solid var(--accent-dim);
+    padding: 6px 0 6px 12px;
+    margin: 8px 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .trace-item b, .citation-item b { color: var(--text); }
+  .ref-tag {
+    display: inline-block;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.75rem;
+    margin: 2px 4px 2px 0;
+  }
+  a { color: var(--accent); }
+  .disclaimer { color: var(--muted); font-size: 0.75rem; margin-top: 20px; }
+  .loading { color: var(--muted); font-style: italic; }
+  .error { color: #e08a8a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>OncoRAG</h1>
+    <p>Real oncology evidence (CIViC, ClinicalTrials.gov, openFDA) &middot; grounded, cited answers &middot; every search shown, not hidden</p>
+  </header>
+
+  <div class="panel">
+    <label for="secret">API secret</label>
+    <input type="password" id="secret" placeholder="paste your API_SECRET" />
+  </div>
+
+  <div class="panel">
+    <label for="question">Ask a question</label>
+    <textarea id="question" placeholder="e.g. What is the standard targeted therapy for FLT3-mutated AML?"></textarea>
+    <div class="examples" id="examples"></div>
+    <div class="row">
+      <div></div>
+      <button id="ask">Ask</button>
+    </div>
+  </div>
+
+  <div id="result"></div>
+
+  <p class="disclaimer">Informational/research tool only, not clinical advice. Covers 5 cancers: NSCLC, breast, colorectal, melanoma, AML.</p>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Remember the secret locally so you don't retype it every question.
+$("secret").value = localStorage.getItem("oncorag_secret") || "";
+$("secret").addEventListener("change", () => localStorage.setItem("oncorag_secret", $("secret").value));
+
+fetch("/examples").then(r => r.json()).then(list => {
+  const box = $("examples");
+  list.forEach(q => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = q.length > 60 ? q.slice(0, 57) + "..." : q;
+    chip.title = q;
+    chip.onclick = () => { $("question").value = q; };
+    box.appendChild(chip);
+  });
+});
+
+function refLabel(ref) {
+  return `<span class="ref-tag">${ref}</span>`;
+}
+
+function renderTrace(trace) {
+  if (!trace.length) return "<p class='trace-item'>No searches were run.</p>";
+  return trace.map(t => `
+    <div class="trace-item">
+      <b>search</b>(query="${t.query ?? ""}"${t.object_type_filter ? `, object_type="${t.object_type_filter}"` : ""})
+      &rarr; ${t.result_count} result(s)
+      ${t.error ? `<br><span class="error">error: ${t.error}</span>` : ""}
+      <br>${(t.top_result_ids || []).map(refLabel).join(" ")}
+    </div>
+  `).join("");
+}
+
+function renderCitations(citations) {
+  if (!citations.length) return "<p class='citation-item'>No citations.</p>";
+  return citations.map(c => {
+    let detail = "";
+    if (c.object_type === "evidence_item") {
+      detail = `${c.source_citation || ""} ${c.source_url ? `&middot; <a href="${c.source_url}" target="_blank" rel="noopener">source</a>` : ""}`;
+    } else if (c.object_type.includes("clinical_trial")) {
+      detail = `${c.title || ""} &middot; <a href="https://clinicaltrials.gov/study/${c.nct_id}" target="_blank" rel="noopener">${c.nct_id}</a>`;
+    } else if (c.object_type.includes("drug_label")) {
+      detail = `${c.drug_name || ""} &middot; ${c.manufacturer_name || ""}`;
+    } else if (c.object_type === "gene") {
+      detail = c.gene_name || "";
+    }
+    return `<div class="citation-item">${refLabel(c.ref)}<br>${detail}</div>`;
+  }).join("");
+}
+
+async function ask() {
+  const question = $("question").value.trim();
+  const secret = $("secret").value.trim();
+  const result = $("result");
+  if (!question) return;
+  if (!secret) { result.innerHTML = "<p class='error'>Enter the API secret first.</p>"; return; }
+
+  $("ask").disabled = true;
+  result.innerHTML = "<p class='loading'>Searching and synthesizing...</p>";
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${secret}` },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      result.innerHTML = `<p class="error">Error ${res.status}: ${err.detail || res.statusText}</p>`;
+      return;
+    }
+    const data = await res.json();
+    result.innerHTML = `
+      <div class="panel">
+        <div class="answer">${data.answer.replace(/</g, "&lt;")}</div>
+        <details>
+          <summary>Reasoning trace (${data.trace.length} search${data.trace.length === 1 ? "" : "es"})</summary>
+          ${renderTrace(data.trace)}
+        </details>
+        <details>
+          <summary>Citations (${data.citations.length})</summary>
+          ${renderCitations(data.citations)}
+        </details>
+      </div>
+    `;
+  } catch (e) {
+    result.innerHTML = `<p class="error">Request failed: ${e}</p>`;
+  } finally {
+    $("ask").disabled = false;
+  }
+}
+
+$("ask").addEventListener("click", ask);
+$("question").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.ctrlKey) ask();
+});
+</script>
+</body>
+</html>
