@@ -3,8 +3,9 @@ property boosts, on top of the single KnowledgeObject collection.
 """
 
 from dataclasses import dataclass, field
+from typing import Optional
 
-from weaviate.classes.query import HybridFusion, MetadataQuery
+from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
 
 from oncorag.retrieval.schema import COLLECTION_NAME
 
@@ -26,8 +27,13 @@ class SearchConfig:
     limit: int = 10
 
 
-def hybrid_search(client, query: str, config: SearchConfig):
+def hybrid_search(client, query: str, config: SearchConfig, object_type: Optional[str] = None):
+    """object_type, when given, restricts results to that KnowledgeObject
+    object_type (e.g. "evidence_item") - added for the Phase 3 agent's
+    search tool, which lets the model narrow a search when it already knows
+    what kind of record it's after."""
     collection = client.collections.get(COLLECTION_NAME)
+    filters = Filter.by_property("object_type").equal(object_type) if object_type else None
     return collection.query.hybrid(
         query=query,
         alpha=config.alpha,
@@ -35,5 +41,6 @@ def hybrid_search(client, query: str, config: SearchConfig):
         query_properties=config.query_properties,
         target_vector="content_vector",
         limit=config.limit,
+        filters=filters,
         return_metadata=MetadataQuery(score=True),
     )
