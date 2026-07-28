@@ -150,17 +150,35 @@ fetch("/examples").then(r => r.json()).then(list => {
   });
 });
 
+// Every value rendered below ultimately traces back to either the user's
+// own question (via the LLM's tool-call query text, which the model forms
+// from it) or external source data (CIViC/ClinicalTrials.gov/openFDA) - none
+// of it is safe to drop into innerHTML unescaped. Escape everything, the
+// same way the answer text already was, consistently, not selectively.
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch]));
+}
+
+function escapeAttr(value) {
+  // For href attributes specifically: only allow http(s) URLs, otherwise
+  // drop the link entirely rather than risk a javascript: URI.
+  const s = String(value ?? "");
+  return /^https?:\/\//i.test(s) ? escapeHtml(s) : "";
+}
+
 function refLabel(ref) {
-  return `<span class="ref-tag">${ref}</span>`;
+  return `<span class="ref-tag">${escapeHtml(ref)}</span>`;
 }
 
 function renderTrace(trace) {
   if (!trace.length) return "<p class='trace-item'>No searches were run.</p>";
   return trace.map(t => `
     <div class="trace-item">
-      <b>search</b>(query="${t.query ?? ""}"${t.object_type_filter ? `, object_type="${t.object_type_filter}"` : ""})
-      &rarr; ${t.result_count} result(s)
-      ${t.error ? `<br><span class="error">error: ${t.error}</span>` : ""}
+      <b>search</b>(query="${escapeHtml(t.query)}"${t.object_type_filter ? `, object_type="${escapeHtml(t.object_type_filter)}"` : ""})
+      &rarr; ${Number(t.result_count) || 0} result(s)
+      ${t.error ? `<br><span class="error">error: ${escapeHtml(t.error)}</span>` : ""}
       <br>${(t.top_result_ids || []).map(refLabel).join(" ")}
     </div>
   `).join("");
@@ -171,13 +189,15 @@ function renderCitations(citations) {
   return citations.map(c => {
     let detail = "";
     if (c.object_type === "evidence_item") {
-      detail = `${c.source_citation || ""} ${c.source_url ? `&middot; <a href="${c.source_url}" target="_blank" rel="noopener">source</a>` : ""}`;
+      const url = escapeAttr(c.source_url);
+      detail = `${escapeHtml(c.source_citation)} ${url ? `&middot; <a href="${url}" target="_blank" rel="noopener">source</a>` : ""}`;
     } else if (c.object_type.includes("clinical_trial")) {
-      detail = `${c.title || ""} &middot; <a href="https://clinicaltrials.gov/study/${c.nct_id}" target="_blank" rel="noopener">${c.nct_id}</a>`;
+      const nct = escapeHtml(c.nct_id);
+      detail = `${escapeHtml(c.title)} &middot; <a href="https://clinicaltrials.gov/study/${encodeURIComponent(c.nct_id || "")}" target="_blank" rel="noopener">${nct}</a>`;
     } else if (c.object_type.includes("drug_label")) {
-      detail = `${c.drug_name || ""} &middot; ${c.manufacturer_name || ""}`;
+      detail = `${escapeHtml(c.drug_name)} &middot; ${escapeHtml(c.manufacturer_name)}`;
     } else if (c.object_type === "gene") {
-      detail = c.gene_name || "";
+      detail = escapeHtml(c.gene_name);
     }
     return `<div class="citation-item">${refLabel(c.ref)}<br>${detail}</div>`;
   }).join("");
@@ -201,13 +221,13 @@ async function ask() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      result.innerHTML = `<p class="error">Error ${res.status}: ${err.detail || res.statusText}</p>`;
+      result.innerHTML = `<p class="error">Error ${res.status}: ${escapeHtml(err.detail || res.statusText)}</p>`;
       return;
     }
     const data = await res.json();
     result.innerHTML = `
       <div class="panel">
-        <div class="answer">${data.answer.replace(/</g, "&lt;")}</div>
+        <div class="answer">${escapeHtml(data.answer)}</div>
         <details>
           <summary>Reasoning trace (${data.trace.length} search${data.trace.length === 1 ? "" : "es"})</summary>
           ${renderTrace(data.trace)}
@@ -219,7 +239,7 @@ async function ask() {
       </div>
     `;
   } catch (e) {
-    result.innerHTML = `<p class="error">Request failed: ${e}</p>`;
+    result.innerHTML = `<p class="error">Request failed: ${escapeHtml(e)}</p>`;
   } finally {
     $("ask").disabled = false;
   }

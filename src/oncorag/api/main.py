@@ -10,6 +10,7 @@ Weaviate and Anthropic calls inside run_agent() are blocking I/O, which
 would otherwise stall the event loop.
 """
 
+import hmac
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -52,7 +53,7 @@ bearer_scheme = HTTPBearer()
 
 
 def require_api_secret(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> None:
-    if credentials.credentials != settings.api_secret:
+    if not hmac.compare_digest(credentials.credentials, settings.api_secret):
         raise HTTPException(status_code=401, detail="Invalid or missing API secret")
 
 
