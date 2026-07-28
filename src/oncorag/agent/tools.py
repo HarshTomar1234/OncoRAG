@@ -48,18 +48,19 @@ def run_search_tool(client, tool_input: dict) -> tuple[str, dict, list[dict]]:
     """Executes the search. Returns (text for Claude, trace entry, retrieved
     object properties - the latter feeds citations and eval grounding
     checks, not just the model)."""
-    query = tool_input["query"]
     object_type = tool_input.get("object_type")
 
-    config = SearchConfig()  # tuned Phase 2 default - not model-configurable
     try:
+        query = tool_input["query"]
+        config = SearchConfig()  # tuned Phase 2 default - not model-configurable
         result = hybrid_search(client, query, config, object_type=object_type)
     except Exception as exc:
-        # A Weaviate error here must not crash the agent loop or silently
-        # hand the model an empty result it might mistake for "nothing
-        # found" - tell it the search itself failed.
+        # Covers both a Weaviate error and a malformed tool call (e.g. a
+        # missing "query" key) - either way this must not crash the agent
+        # loop or silently look like an empty result the model could
+        # mistake for "nothing found".
         trace_entry = {
-            "query": query,
+            "query": tool_input.get("query"),
             "object_type_filter": object_type,
             "result_count": 0,
             "top_result_ids": [],
