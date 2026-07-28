@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+docs/
+scripts/
+tests/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.git/
+web-search/
+oncology related project/
