@@ -39,3 +39,12 @@ static/index.html  →  FastAPI (/chat, /health)  →  agent tool-use loop
 - `src/oncorag/agent/` — the tool-use loop, citations, safety framing
 - `src/oncorag/api/` — FastAPI surface
 - `static/` — the chat UI
+
+## Evaluation
+
+Every retrieval/agent decision in this project was tuned and verified
+against real, measured results, not defaults — `scripts/run_eval.py`
+(hybrid search alpha/fusion sweep), `scripts/run_agent_eval.py` (agent
+grounding, citation accuracy, tools-disabled baseline), and
+`scripts/run_redteam.py` (adversarial/safety testing against the live
+deployed agent). All reproducible against a populated instance.
