@@ -6,11 +6,8 @@ manual loop gives for free since it's the one executing the tool.
 
 from dataclasses import dataclass, field
 
-import anthropic
-
 from oncorag.agent.citations import build_citation, object_ref
 from oncorag.agent.tools import TOOL_SCHEMA, run_search_tool
-from oncorag.config.settings import settings
 
 MODEL = "claude-sonnet-5"
 MAX_TOOL_ITERATIONS = 6
@@ -46,8 +43,11 @@ class AgentResult:
     retrieved_by_ref: dict[str, dict] = field(default_factory=dict)
 
 
-def run_agent(weaviate_client, question: str, use_tools: bool = True) -> AgentResult:
-    anthropic_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def run_agent(weaviate_client, anthropic_client, question: str, use_tools: bool = True) -> AgentResult:
+    """anthropic_client is passed in (created once by the caller) rather than
+    constructed here - the API server creates one at startup and reuses it
+    across every request instead of paying client-construction cost, and
+    more importantly opening a fresh network client, on every call."""
     messages = [{"role": "user", "content": question}]
     trace: list[dict] = []
     retrieved_by_ref: dict[str, dict] = {}

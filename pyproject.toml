@@ -9,9 +9,15 @@ dependencies = [
     "python-dotenv>=1.0",
     "httpx>=0.27",
     "tiktoken>=0.7",
-    "sentence-transformers>=3.0",
     "anthropic>=0.40",
+    "fastapi[standard]>=0.115",
 ]
+
+[project.optional-dependencies]
+# Phase 2's cross-encoder reranker - measured, disabled by default (see
+# docs/eval/phase2_results.md), and pulls in torch (multi-GB). The running
+# API never imports it, so it's opt-in rather than baked into every image.
+rerank = ["sentence-transformers>=3.0"]
 
 [build-system]
 requires = ["setuptools>=68"]
