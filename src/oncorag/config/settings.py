@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     weaviate_url: str
     weaviate_api_key: str
     openfda_api_key: str
+    anthropic_api_key: str
 
 
 settings = Settings()
