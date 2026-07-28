@@ -19,7 +19,10 @@ import json
 import re
 from pathlib import Path
 
+import anthropic
+
 from oncorag.agent.agent import run_agent
+from oncorag.config.settings import settings
 from oncorag.retrieval.client import weaviate_client
 
 DOCS_EVAL = Path(__file__).resolve().parent.parent / "docs" / "eval"
@@ -72,14 +75,16 @@ def main() -> None:
     realistic = load_jsonl(DOCS_EVAL / "golden_set_realistic.jsonl")
     unanswerable = load_jsonl(DOCS_EVAL / "unanswerable_set.jsonl")
 
+    anthropic_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
     with weaviate_client() as client:
         print("=== 1+2+3: realistic set, tools enabled vs. disabled ===\n")
         id_hits = 0
         grounding_clean = 0
         tool_call_count = 0
         for i, entry in enumerate(realistic):
-            with_tools = run_agent(client, entry["question"], use_tools=True)
-            without_tools = run_agent(client, entry["question"], use_tools=False)
+            with_tools = run_agent(client, anthropic_client, entry["question"], use_tools=True)
+            without_tools = run_agent(client, anthropic_client, entry["question"], use_tools=False)
 
             hit = id_match(entry, with_tools.citations)
             unsupported = grounding_check(with_tools.answer, with_tools.retrieved_by_ref)
@@ -102,7 +107,7 @@ def main() -> None:
 
         print("\n=== 4: unanswerable questions (read manually, not auto-scored) ===\n")
         for entry in unanswerable:
-            result = run_agent(client, entry["question"], use_tools=True)
+            result = run_agent(client, anthropic_client, entry["question"], use_tools=True)
             print(f"Q: {entry['question']}")
             print(f"   (why unanswerable: {entry['reason']})")
             print(f"   tool_called={len(result.trace) > 0}")
