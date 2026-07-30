@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     weaviate_api_key: str
     openfda_api_key: str
     anthropic_api_key: str
-    # Shared-secret check on /chat - cheap, and worth having even for local
-    # Docker use: a container's mapped port is reachable by more than just
-    # the machine running it, and an open /chat calls a paid Anthropic API.
+    # Admin bypass for /chat's rate limits (Authorization: Bearer <secret>) -
+    # used by this project's own eval/red-team scripts to call the paid
+    # Anthropic API without hitting the anonymous-visitor daily caps.
     api_secret: str
 
 
