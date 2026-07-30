@@ -45,6 +45,12 @@ EXAMPLE_QUESTIONS = [
     "What is the standard targeted therapy for FLT3-mutated acute myeloid leukemia?",
     "What serious immune-related side effects should patients on pembrolizumab watch for?",
     "Are there clinical trials for MET overexpression in NSCLC?",
+    "What treatment options are supported by evidence for HER2-positive breast cancer?",
+    "What is the significance of KRAS mutation status for anti-EGFR therapy in colorectal cancer?",
+    "What is the difference in indication between midostaurin and gilteritinib?",
+    "What warnings and precautions are listed for pembrolizumab?",
+    "Are there active recruiting trials for FLT3-mutated AML?",
+    "What resistance mechanisms are documented for osimertinib in EGFR-mutated NSCLC?",
 ]
 
 
@@ -63,7 +69,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # case for a public visitor - they're rate-limited below, not rejected.
 bearer_scheme = HTTPBearer(auto_error=False)
 
-PER_IP_DAILY_LIMIT = 10
+PER_IP_DAILY_LIMIT = 20
 GLOBAL_DAILY_LIMIT = 250
 _rate_limit_state = {"day": None, "per_ip": defaultdict(int), "global": 0}
 
