@@ -8,12 +8,22 @@ thread-safe). Endpoints are plain `def`, not `async def`, so FastAPI
 dispatches each request to its threadpool - required since both the
 Weaviate and Anthropic calls inside run_agent() are blocking I/O, which
 would otherwise stall the event loop.
+
+Access model (Phase 5 revision, after a security-tradeoff review): a
+shared secret typed into the UI doesn't actually bound cost - it's public
+after the first forward, and it's exactly the friction that defeats a
+"click the link and try it" portfolio demo. Replaced with per-IP + global
+daily rate limits (in-memory, single-instance - fine for this scale). The
+secret still exists as an admin bypass (Authorization: Bearer <secret>
+skips the limits) for this project's own eval/red-team scripts.
 """
 
 import hmac
 import logging
 import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
+from datetime import date
 
 import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -49,12 +59,51 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OncoRAG", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-bearer_scheme = HTTPBearer()
+# auto_error=False: an absent Authorization header is the normal, expected
+# case for a public visitor - they're rate-limited below, not rejected.
+bearer_scheme = HTTPBearer(auto_error=False)
+
+PER_IP_DAILY_LIMIT = 10
+GLOBAL_DAILY_LIMIT = 250
+_rate_limit_state = {"day": None, "per_ip": defaultdict(int), "global": 0}
 
 
-def require_api_secret(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> None:
-    if not hmac.compare_digest(credentials.credentials, settings.api_secret):
-        raise HTTPException(status_code=401, detail="Invalid or missing API secret")
+def is_privileged(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> bool:
+    if credentials is None:
+        return False
+    return hmac.compare_digest(credentials.credentials.encode(), settings.api_secret.encode())
+
+
+def _client_ip(request: Request) -> str:
+    # Most hosting platforms *append* to X-Forwarded-For rather than
+    # replacing it, so a client that sends its own XFF value can still
+    # land at index 0 even behind a real proxy - meaning the per-IP cap is
+    # a soft, spoofable signal in any deployment, not just when run
+    # directly without a proxy. GLOBAL_DAILY_LIMIT is the real ceiling;
+    # this is an accepted limitation for a cost-bounding limit, not a
+    # security boundary.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_rate_limit(request: Request) -> None:
+    today = date.today()
+    if _rate_limit_state["day"] != today:
+        _rate_limit_state["day"] = today
+        _rate_limit_state["per_ip"] = defaultdict(int)
+        _rate_limit_state["global"] = 0
+
+    if _rate_limit_state["global"] >= GLOBAL_DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail="This demo's quota for today is used up - check back tomorrow.")
+
+    ip = _client_ip(request)
+    if _rate_limit_state["per_ip"][ip] >= PER_IP_DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail="You've hit today's per-visitor limit for this demo.")
+
+    _rate_limit_state["per_ip"][ip] += 1
+    _rate_limit_state["global"] += 1
 
 
 class ChatRequest(BaseModel):
@@ -92,10 +141,12 @@ def examples() -> list[str]:
     return EXAMPLE_QUESTIONS
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_secret)])
-def chat(request: Request, body: ChatRequest) -> ChatResponse:
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: Request, body: ChatRequest, privileged: bool = Depends(is_privileged)) -> ChatResponse:
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
+    if not privileged:
+        _enforce_rate_limit(request)
 
     result = run_agent(
         request.app.state.weaviate_client,

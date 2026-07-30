@@ -37,7 +37,7 @@
   }
 
   label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
-  input[type=password], textarea {
+  textarea {
     width: 100%;
     background: #0e1013;
     border: 1px solid var(--border);
@@ -76,7 +76,15 @@
   }
   .chip:hover { border-color: var(--accent); color: var(--text); }
 
-  .answer { white-space: pre-wrap; font-size: 0.98rem; }
+  .answer { font-size: 0.98rem; }
+  .answer p { margin: 0 0 10px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer h3, .answer h4 { margin: 16px 0 8px; color: var(--text); }
+  .answer h3:first-child, .answer h4:first-child { margin-top: 0; }
+  .answer ul, .answer ol { margin: 0 0 10px; padding-left: 22px; }
+  .answer li { margin: 4px 0; }
+  .answer strong { color: var(--text); }
+  .answer .ref-tag { font-size: 0.7rem; vertical-align: middle; }
 
   details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
   summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; font-weight: 600; }
@@ -112,11 +120,6 @@
   </header>
 
   <div class="panel">
-    <label for="secret">API secret</label>
-    <input type="password" id="secret" placeholder="paste your API_SECRET" />
-  </div>
-
-  <div class="panel">
     <label for="question">Ask a question</label>
     <textarea id="question" placeholder="e.g. What is the standard targeted therapy for FLT3-mutated AML?"></textarea>
     <div class="examples" id="examples"></div>
@@ -133,10 +136,6 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-
-// Remember the secret locally so you don't retype it every question.
-$("secret").value = localStorage.getItem("oncorag_secret") || "";
-$("secret").addEventListener("change", () => localStorage.setItem("oncorag_secret", $("secret").value));
 
 fetch("/examples").then(r => r.json()).then(list => {
   const box = $("examples");
@@ -172,6 +171,55 @@ function refLabel(ref) {
   return `<span class="ref-tag">${escapeHtml(ref)}</span>`;
 }
 
+// Minimal, dependency-free markdown for the answer text: escape first (the
+// same discipline as everywhere else in this file), then turn a small,
+// predictable subset of markdown into real tags on the already-escaped
+// string - never re-interpreting any of the original text as raw HTML.
+// Covers what the agent's answers actually use (bold, headers, lists,
+// inline [object_type:id] citation tags) - not a general markdown parser.
+function renderMarkdown(raw) {
+  const lines = escapeHtml(raw).split("\n");
+  const blocks = [];
+  let listItems = [];
+  let listTag = null;
+
+  function flushList() {
+    if (listItems.length) {
+      blocks.push(`<${listTag}>${listItems.map((li) => `<li>${li}</li>`).join("")}</${listTag}>`);
+      listItems = [];
+      listTag = null;
+    }
+  }
+
+  function inline(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([a-z_]+:[^\]]*)\]/gi, (_, ref) => refLabel(ref));
+  }
+
+  for (const line of lines) {
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+\.\s+(.*)$/);
+    const h4 = line.match(/^###\s+(.*)$/);
+    const h3 = line.match(/^##\s+(.*)$/);
+
+    if (bullet) {
+      if (listTag !== "ul") { flushList(); listTag = "ul"; }
+      listItems.push(inline(bullet[1]));
+    } else if (numbered) {
+      if (listTag !== "ol") { flushList(); listTag = "ol"; }
+      listItems.push(inline(numbered[1]));
+    } else {
+      flushList();
+      if (h4) blocks.push(`<h4>${inline(h4[1])}</h4>`);
+      else if (h3) blocks.push(`<h3>${inline(h3[1])}</h3>`);
+      else if (line.trim() !== "") blocks.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  flushList();
+  return blocks.join("");
+}
+
 function renderTrace(trace) {
   if (!trace.length) return "<p class='trace-item'>No searches were run.</p>";
   return trace.map(t => `
@@ -187,16 +235,17 @@ function renderTrace(trace) {
 function renderCitations(citations) {
   if (!citations.length) return "<p class='citation-item'>No citations.</p>";
   return citations.map(c => {
+    const objectType = c.object_type || "";
     let detail = "";
-    if (c.object_type === "evidence_item") {
+    if (objectType === "evidence_item") {
       const url = escapeAttr(c.source_url);
       detail = `${escapeHtml(c.source_citation)} ${url ? `&middot; <a href="${url}" target="_blank" rel="noopener">source</a>` : ""}`;
-    } else if (c.object_type.includes("clinical_trial")) {
+    } else if (objectType.includes("clinical_trial")) {
       const nct = escapeHtml(c.nct_id);
       detail = `${escapeHtml(c.title)} &middot; <a href="https://clinicaltrials.gov/study/${encodeURIComponent(c.nct_id || "")}" target="_blank" rel="noopener">${nct}</a>`;
-    } else if (c.object_type.includes("drug_label")) {
+    } else if (objectType.includes("drug_label")) {
       detail = `${escapeHtml(c.drug_name)} &middot; ${escapeHtml(c.manufacturer_name)}`;
-    } else if (c.object_type === "gene") {
+    } else if (objectType === "gene") {
       detail = escapeHtml(c.gene_name);
     }
     return `<div class="citation-item">${refLabel(c.ref)}<br>${detail}</div>`;
@@ -205,10 +254,8 @@ function renderCitations(citations) {
 
 async function ask() {
   const question = $("question").value.trim();
-  const secret = $("secret").value.trim();
   const result = $("result");
   if (!question) return;
-  if (!secret) { result.innerHTML = "<p class='error'>Enter the API secret first.</p>"; return; }
 
   $("ask").disabled = true;
   result.innerHTML = "<p class='loading'>Searching and synthesizing...</p>";
@@ -216,7 +263,7 @@ async function ask() {
   try {
     const res = await fetch("/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${secret}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
     });
     if (!res.ok) {
@@ -227,7 +274,7 @@ async function ask() {
     const data = await res.json();
     result.innerHTML = `
       <div class="panel">
-        <div class="answer">${escapeHtml(data.answer)}</div>
+        <div class="answer">${renderMarkdown(data.answer)}</div>
         <details>
           <summary>Reasoning trace (${data.trace.length} search${data.trace.length === 1 ? "" : "es"})</summary>
           ${renderTrace(data.trace)}
