@@ -2,6 +2,8 @@
 
 Production-grade RAG + agentic oncology knowledge system, built on Weaviate.
 
+**Live demo: [oncorag.onrender.com](https://oncorag.onrender.com/)** (free-tier hosting, sleeps after 15 min idle, so the first load after a gap can take 30-60s to wake up)
+
 ![OncoRAG UI](images/app-screenshot.png)
 
 Real oncology data (CIViC, ClinicalTrials.gov, openFDA) in a Weaviate hybrid
@@ -66,8 +68,9 @@ See [Evaluation](#evaluation) for the actual numbers behind all of this.
 
 ## Try it
 
-Ask about any of the five covered cancers: targeted therapies, resistance
-mechanisms, drug safety warnings, or clinical trials. A few to start with:
+Open the [live demo](https://oncorag.onrender.com/) and ask about any of
+the five covered cancers: targeted therapies, resistance mechanisms, drug
+safety warnings, or clinical trials. A few to start with:
 
 - What is the standard targeted therapy for FLT3-mutated acute myeloid leukemia?
 - What treatment options are supported by evidence for BRAF V600E mutated melanoma?
