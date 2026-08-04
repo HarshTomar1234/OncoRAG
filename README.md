@@ -94,6 +94,8 @@ genuinely unanswerable from the data, and it'll say so rather than
 improvise. Try that too; a system that only demos well on easy questions
 isn't demonstrating much.
 
+<img src="images/example-answer.png" alt="Example answer with citations and a collapsible reasoning trace" width="850">
+
 The live demo rate-limits anonymous visitors to 20 questions/day per IP
 to keep API costs bounded (a global daily cap protects the whole thing
 regardless); running it yourself, below, removes that limit entirely.
